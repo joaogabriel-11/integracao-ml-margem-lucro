@@ -58,7 +58,8 @@ ML_REDIRECT_URI=https://www.google.com
 
 ## 3. Primeira autenticação (uma vez só)
 
-1. Abra o link abaixo em uma aba anônima, logado na conta da LNJ (troque `SEU_APP_ID`):
+1. Acesse o link abaixo utilizando a conta do Mercado Livre autorizada para o aplicativo.
+2. Substitua `SEU_APP_ID` pelo `Client ID` da aplicação antes de acessar o link:
 
    ```
    https://auth.mercadolivre.com.br/authorization?response_type=code&client_id=SEU_APP_ID&redirect_uri=https://www.google.com
