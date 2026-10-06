@@ -2,11 +2,12 @@
 
 Uso:
     python auditor_margem.py          # modo real: consulta a API do Mercado Livre
-    python auditor_margem.py --demo   # modo demo: lê anuncios_ml.csv e custos.xlsx locais
+    python auditor_margem.py --demo   # modo demo: lê demo/anuncios_ml.csv e demo/custos.xlsx
 """
 import argparse
 import re
 import time
+from pathlib import Path
 
 import pandas as pd
 
@@ -18,6 +19,7 @@ MARGEM_MIN_PCT = 10.0    # alerta se a margem (% sobre o preço) ficar abaixo di
 LUCRO_MIN_REAIS = 0.0    # alerta se o lucro em R$ ficar abaixo disso
 ARQUIVO_SAIDA = "alertas_revisao_precos.xlsx"
 LIMITE_TESTE = None      # modo real: processa só N anúncios (ex.: 20); None = todos
+PASTA_DEMO = "demo"      # modo demo: pasta com anuncios_ml.csv e custos.xlsx de exemplo
 # ================================================
 
 
@@ -39,7 +41,13 @@ def para_float(valor):
         return None
 
 
+def exigir_arquivo(caminho):
+    if not Path(caminho).is_file():
+        raise SystemExit(f"❌ Arquivo não encontrado: {caminho}")
+
+
 def carregar_custos(arquivo):
+    exigir_arquivo(arquivo)
     df = pd.read_excel(arquivo, dtype={COL_SKU: str})
     for col in (COL_SKU, COL_CUSTO):
         if col not in df.columns:
@@ -143,6 +151,7 @@ def coletar_via_api(custos):
 # ---------------------- MODO DEMO (CSV local) ----------------------
 
 def coletar_via_csv(custos, caminho_csv):
+    exigir_arquivo(caminho_csv)
     df = pd.read_csv(caminho_csv, dtype={"sku": str})
     obrigatorias = ["item_id", "titulo", "sku", "preco", "comissao", "frete"]
     faltando = [c for c in obrigatorias if c not in df.columns]
@@ -166,12 +175,36 @@ def coletar_via_csv(custos, caminho_csv):
 
 # ---------------------- RELATÓRIO ----------------------
 
+def classificar(linha):
+    """Devolve (situacao, motivo) de uma linha calculada."""
+    status = linha["status"]
+    if status == "sem_custo":
+        return "SEM CUSTO", "SKU não encontrado no custos.xlsx"
+    if status != "ok":
+        return "ERRO", status
+
+    motivos = []
+    if linha["lucro"] < LUCRO_MIN_REAIS:
+        motivos.append("prejuízo" if LUCRO_MIN_REAIS <= 0 else f"lucro abaixo de R$ {LUCRO_MIN_REAIS:.2f}")
+    if linha["margem_pct"] < MARGEM_MIN_PCT:
+        motivos.append(f"margem abaixo de {MARGEM_MIN_PCT:g}%")
+    if motivos:
+        return "ALERTA", " e ".join(motivos)
+    return "OK", ""
+
+
 def gerar_relatorio(linhas, arquivo_saida):
     df = pd.DataFrame(linhas)
-    ok = df[df["status"] == "ok"]
-    alertas = ok[(ok["lucro"] < LUCRO_MIN_REAIS) | (ok["margem_pct"] < MARGEM_MIN_PCT)]
-    alertas = alertas.sort_values("margem_pct")
-    pendencias = df[df["status"] != "ok"]
+    df[["situacao", "motivo"]] = df.apply(lambda l: pd.Series(classificar(l)), axis=1)
+
+    # situacao e motivo na frente; "status" (interno) deixa de aparecer
+    primeiras = ["situacao", "motivo"]
+    df = df.drop(columns="status")
+    df = df[primeiras + [c for c in df.columns if c not in primeiras]]
+
+    alertas = df[df["situacao"] == "ALERTA"].sort_values("margem_pct")
+    pendencias = df[df["situacao"].isin(["SEM CUSTO", "ERRO"])]
+    calculados = df[df["situacao"].isin(["OK", "ALERTA"])]
 
     with pd.ExcelWriter(arquivo_saida, engine="openpyxl") as xw:
         alertas.to_excel(xw, sheet_name="Alertas", index=False)
@@ -179,7 +212,7 @@ def gerar_relatorio(linhas, arquivo_saida):
         df.to_excel(xw, sheet_name="Auditoria completa", index=False)
 
     print("\n--- Resumo ---")
-    print(f"Com margem calculada : {len(ok)}")
+    print(f"Com margem calculada : {len(calculados)}")
     print(f"Em alerta            : {len(alertas)}")
     print(f"Sem custo/erro       : {len(pendencias)}")
     print(f"📄 Arquivo gerado: {arquivo_saida}")
@@ -188,19 +221,25 @@ def gerar_relatorio(linhas, arquivo_saida):
 def main():
     parser = argparse.ArgumentParser(description="Auditor de margem de lucro - Mercado Livre")
     parser.add_argument("--demo", action="store_true",
-                        help="usa o CSV local em vez da API (não precisa de credenciais)")
-    parser.add_argument("--csv", default="anuncios_ml.csv",
-                        help="CSV de anúncios usado no modo demo (padrão: anuncios_ml.csv)")
-    parser.add_argument("--custos", default=ARQUIVO_CUSTOS,
-                        help=f"planilha de custos (padrão: {ARQUIVO_CUSTOS})")
+                        help=f"usa os arquivos de exemplo da pasta {PASTA_DEMO}/ em vez da API (não precisa de credenciais)")
+    parser.add_argument("--csv", default=None,
+                        help=f"CSV de anúncios do modo demo (padrão: {PASTA_DEMO}/anuncios_ml.csv)")
+    parser.add_argument("--custos", default=None,
+                        help=f"planilha de custos (padrão: {ARQUIVO_CUSTOS}; no modo demo: {PASTA_DEMO}/custos.xlsx)")
     args = parser.parse_args()
 
-    custos = carregar_custos(args.custos)
-
     if args.demo:
-        linhas = coletar_via_csv(custos, args.csv)
-        saida = ARQUIVO_SAIDA.replace(".xlsx", "_demo.xlsx")  # não sobrescreve o relatório real
+        pasta = Path(PASTA_DEMO)
+        caminho_csv = args.csv or str(pasta / "anuncios_ml.csv")
+        caminho_custos = args.custos or str(pasta / "custos.xlsx")
+        # o relatório demo também fica na pasta demo/ e não sobrescreve o real
+        saida = str(pasta / ARQUIVO_SAIDA.replace(".xlsx", "_demo.xlsx"))
+        pasta.mkdir(exist_ok=True)
+
+        custos = carregar_custos(caminho_custos)
+        linhas = coletar_via_csv(custos, caminho_csv)
     else:
+        custos = carregar_custos(args.custos or ARQUIVO_CUSTOS)
         linhas = coletar_via_api(custos)
         saida = ARQUIVO_SAIDA
 
