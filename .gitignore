@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+
+.env
+tokens.json
+*.xlsx
+
+files/
+
+!custos.xlsx
+!alertas_revisao_precos_demo.xlsx
