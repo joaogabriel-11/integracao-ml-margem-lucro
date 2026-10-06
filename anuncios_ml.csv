@@ -1,7 +1,0 @@
-﻿item_id,titulo,sku,preco,categoria,tipo_anuncio,comissao,frete_gratis,logistica,modo_envio,frete
-MLBDEMO0001,Caixa de Direção Hidráulica Modelo A 2005-2012,DEMO-001,520.0,MLBCAT0001,gold_pro,88.4,True,xd_drop_off,me2,38.5
-MLBDEMO0002,Bomba de Combustível Elétrica Modelo B,DEMO-002,340.0,MLBCAT0002,gold_pro,57.8,True,xd_drop_off,me2,33.2
-MLBDEMO0003,Coxim do Motor Dianteiro Modelo C,DEMO-003,210.0,MLBCAT0003,gold_pro,35.7,True,xd_drop_off,me2,29.9
-MLBDEMO0004,Pastilha de Freio Dianteira Modelo D,DEMO-004,140.0,MLBCAT0004,gold_pro,23.8,True,xd_drop_off,me2,27.4
-MLBDEMO0005,Kit Correia Dentada com Tensor Modelo E,DEMO-005,280.0,MLBCAT0005,gold_pro,47.6,True,xd_drop_off,me2,34.1
-MLBDEMO0006,Junta da Tampa de Válvulas Modelo F,DEMO-006,70.0,MLBCAT0006,gold_pro,11.9,False,not_specified,not_specified,0.0

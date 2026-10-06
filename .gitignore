@@ -5,7 +5,8 @@ __pycache__/
 tokens.json
 *.xlsx
 
-files/
+alertas_revisao_precos.xlsx
+anuncios_ml.csv
+custos.xlsx
 
-!custos.xlsx
-!alertas_revisao_precos_demo.xlsx
+!demo/*
