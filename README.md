@@ -2,6 +2,9 @@
 
 Sistema desenvolvido para automatizar o cruzamento entre os anúncios do **Mercado Livre** e os produtos de um fornecedor, permitindo analisar custos, preços e margens de lucro.
 
+<img width="1890" height="942" alt="integracao-ml" src="https://github.com/user-attachments/assets/e4fb4249-6576-46d6-a9c3-002c6b13aaf0" />
+
+
 ## Funcionalidade
 
 O sistema utiliza a **API oficial do Mercado Livre** para consultar os anúncios ativos da conta e cruza essas informações com os dados obtidos diretamente do **site do fornecedor da empresa**.
