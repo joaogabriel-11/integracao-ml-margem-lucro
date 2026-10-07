@@ -1,0 +1,48 @@
+{% extends "base.html" %} {% block titulo %}Tabela de custos - Portal do
+Fornecedor (simulado){% endblock %} {% block conteudo %}
+<h2>Tabela de custos</h2>
+<p data-testid="resumo">
+  {{ total }} produtos · página {{ pagina }} de {{ paginas }}
+</p>
+<table data-testid="tabela-produtos">
+  <thead>
+    <tr>
+      <th>SKU</th>
+      <th>Descrição</th>
+      <th class="custo">Custo unitário</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in itens %}
+    <tr data-testid="linha-produto">
+      <td data-campo="sku">{{ p.sku }}</td>
+      <td data-campo="descricao">{{ p.descricao }}</td>
+      <td data-campo="custo" class="custo">{{ p.custo | brl }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<div class="paginacao">
+  {% if pagina > 1 %}
+  <a
+    class="btn"
+    data-testid="pagina-anterior"
+    href="{{ url_for('produtos', pagina=pagina - 1) }}"
+    >‹ Anterior</a
+  >
+  {% else %}
+  <span class="btn desativado" data-testid="pagina-anterior">‹ Anterior</span>
+  {% endif %}
+  <span>Página {{ pagina }} / {{ paginas }}</span>
+  {% if pagina < paginas %}
+  <a
+    class="btn"
+    data-testid="proxima-pagina"
+    href="{{ url_for('produtos', pagina=pagina + 1) }}"
+    >Próxima ›</a
+  >
+  {% else %}
+  <span class="btn desativado" data-testid="proxima-pagina">Próxima ›</span>
+  {% endif %}
+</div>
+{% endblock %}

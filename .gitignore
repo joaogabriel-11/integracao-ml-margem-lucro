@@ -1,12 +1,13 @@
 __pycache__/
 *.pyc
 
+# segredos
 .env
 tokens.json
-*.xlsx
 
-alertas_revisao_precos.xlsx
-anuncios_ml.csv
-custos.xlsx
-
-!demo/*
+# dados reais e tudo que o sistema gera
+dados/
+saida/
+demo/saida/
+/*.xlsx
+/*.csv
