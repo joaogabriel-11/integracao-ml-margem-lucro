@@ -1,8 +1,8 @@
 """Auditor de Margem de Lucro - Mercado Livre.
 
 Uso:
-    python auditor_margem.py          # modo real: consulta a API do Mercado Livre
-    python auditor_margem.py --demo   # modo demo: lê demo/anuncios_ml.csv e demo/custos.xlsx
+    python src/auditor_margem.py          # modo real: consulta a API do Mercado Livre
+    python src/auditor_margem.py --demo   # modo demo: lê demo/anuncios_ml.csv e demo/custos.xlsx
 """
 import argparse
 import re
@@ -12,12 +12,12 @@ from pathlib import Path
 import pandas as pd
 
 # ================= CONFIGURAÇÃO =================
-ARQUIVO_CUSTOS = "custos.xlsx"
+ARQUIVO_CUSTOS = "dados/custos.xlsx"
 COL_SKU = "SKU"
 COL_CUSTO = "Custo do Fornecedor"
 MARGEM_MIN_PCT = 10.0    # alerta se a margem (% sobre o preço) ficar abaixo disso
 LUCRO_MIN_REAIS = 0.0    # alerta se o lucro em R$ ficar abaixo disso
-ARQUIVO_SAIDA = "alertas_revisao_precos.xlsx"
+ARQUIVO_SAIDA = "saida/alertas_revisao_precos.xlsx"
 LIMITE_TESTE = None      # modo real: processa só N anúncios (ex.: 20); None = todos
 PASTA_DEMO = "demo"      # modo demo: pasta com anuncios_ml.csv e custos.xlsx de exemplo
 # ================================================
@@ -206,6 +206,7 @@ def gerar_relatorio(linhas, arquivo_saida):
     pendencias = df[df["situacao"].isin(["SEM CUSTO", "ERRO"])]
     calculados = df[df["situacao"].isin(["OK", "ALERTA"])]
 
+    Path(arquivo_saida).parent.mkdir(parents=True, exist_ok=True)
     with pd.ExcelWriter(arquivo_saida, engine="openpyxl") as xw:
         alertas.to_excel(xw, sheet_name="Alertas", index=False)
         pendencias.to_excel(xw, sheet_name="Sem custo ou erro", index=False)
@@ -233,8 +234,7 @@ def main():
         caminho_csv = args.csv or str(pasta / "anuncios_ml.csv")
         caminho_custos = args.custos or str(pasta / "custos.xlsx")
         # o relatório demo também fica na pasta demo/ e não sobrescreve o real
-        saida = str(pasta / ARQUIVO_SAIDA.replace(".xlsx", "_demo.xlsx"))
-        pasta.mkdir(exist_ok=True)
+        saida = str(pasta / "saida" / Path(ARQUIVO_SAIDA).name.replace(".xlsx", "_demo.xlsx"))
 
         custos = carregar_custos(caminho_custos)
         linhas = coletar_via_csv(custos, caminho_csv)

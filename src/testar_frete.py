@@ -7,7 +7,7 @@ from ml_auth import API, auth_headers
 
 seller_id = requests.get(f"{API}/users/me", headers=auth_headers(), timeout=30).json()["id"]
 
-df = pd.read_csv("anuncios_ml.csv")
+df = pd.read_csv("saida/anuncios_real.csv")
 amostra = df[df["frete_gratis"] == True].head(5)
 
 for i, row in enumerate(amostra.itertuples()):

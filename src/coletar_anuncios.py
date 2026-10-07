@@ -1,3 +1,4 @@
+from pathlib import Path
 import time
 
 import pandas as pd
@@ -84,7 +85,8 @@ if __name__ == "__main__":
         time.sleep(0.1)
 
     df = pd.DataFrame(linhas)
-    df.to_csv("anuncios_ml.csv", index=False, encoding="utf-8-sig")
+    Path("saida").mkdir(exist_ok=True)
+    df.to_csv("saida/anuncios_real.csv", index=False, encoding="utf-8-sig")
 
     print("\n--- Resumo ---")
     print("Anúncios com SKU:", df["sku"].notna().sum(), "de", len(df))

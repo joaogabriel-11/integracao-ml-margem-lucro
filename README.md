@@ -1,44 +1,133 @@
-# Auditor de Margem de Lucro: Mercado Livre
+# Auditor de Margem de Lucro + RPA de Custos: Mercado Livre
 
-Script em Python que consulta os anúncios ativos da conta no Mercado Livre, cruza com a planilha de custos e avisa quais anúncios estão com a margem abaixo do aceitável.
+Automação em Python que protege a margem de um e-commerce no Mercado Livre. Ela cruza os anúncios ativos (via API) com os custos dos fornecedores, avisa quais anúncios estão com margem baixa e sugere o ajuste de preço, tudo em um ciclo único.
 
-**Cálculo da margem:**
+<!-- Depois de gravar o GIF da execução, salve em docs/demo.gif e remova as marcas de comentário da linha abaixo -->
+<!-- ![Demonstração do ciclo completo](docs/demo.gif) -->
+
+> **Tudo na demonstração é fictício.** O portal do fornecedor é uma **simulação** criada para mostrar o RPA funcionando; os produtos, SKUs, custos e credenciais (`demo` / `demo123`) não existem no mundo real.
+
+---
+
+## O problema
+
+Em um e-commerce de autopeças, o lucro de cada anúncio depende de três valores que mudam:
+
+- a **comissão** do Mercado Livre,
+- o **frete grátis** pago pelo vendedor,
+- o **custo do fornecedor**.
+
+Se qualquer um deles sobe e o preço de venda não acompanha, a margem some sem ninguém perceber. Este projeto automatiza a checagem:
 
 ```
-Lucro = Preço de venda − Comissão ML − Frete do vendedor − Custo do fornecedor
+Lucro    = Preço de venda − Comissão ML − Frete do vendedor − Custo do fornecedor
 Margem % = Lucro ÷ Preço de venda × 100
 ```
 
-> **Quer só ver funcionando?** Pule para a seção [6. Testar sem conta do Mercado Livre (modo demo)](#6-testar-sem-conta-do-mercado-livre-modo-demo): não precisa de credenciais.
+## O ciclo
 
----
-
-## 1. Arquivos do projeto
-
-| Arquivo                       | Para que serve                                                                   |
-| ----------------------------- | -------------------------------------------------------------------------------- |
-| `auditor_margem.py`           | **Script principal.** Gera o relatório de alertas (modo real ou `--demo`)        |
-| `custos.xlsx`                 | Planilha com o SKU e o custo de cada peça (no repositório, é o exemplo fictício) |
-| `anuncios_ml.csv`             | Anúncios de exemplo (fictícios), usados apenas no modo demo                      |
-| `alertas_revisao_precos.xlsx` | Relatório gerado (é sobrescrito a cada execução)                                 |
-| `.env`                        | Credenciais do app (App ID, Secret Key e redirect URI)                           |
-| `tokens.json`                 | Token de acesso, gerado automaticamente                                          |
-| `ml_auth.py`                  | Autenticação e renovação do token                                                |
-| `gerar_token.py`              | Gera o token na primeira vez (ou quando precisar reautorizar)                    |
-| `testar_api.py`               | Testa se a conexão com o Mercado Livre está funcionando                          |
-| `coletar_anuncios.py`         | Funções de coleta de anúncios (usado pelo auditor)                               |
-| `testar_frete.py`             | Teste da consulta de frete (opcional)                                            |
-
----
-
-## 2. Instalação (uma vez só)
-
-```bash
-pip install requests python-dotenv pandas openpyxl
-pip install --upgrade openpyxl
+```mermaid
+flowchart LR
+    A[Portal do fornecedor<br/>simulado] -->|RPA com Playwright| B[dados/custos.xlsx]
+    C[API do Mercado Livre<br/>anúncios, comissão, frete] --> D
+    B --> D[Auditor de margem]
+    D --> E[saida/alertas_revisao_precos.xlsx]
+    E --> F[Ajuste de preços<br/>via API]
+    F --> G[Preços corrigidos<br/>simulação por padrão]
 ```
 
-Crie o arquivo `.env` na pasta do projeto:
+| Etapa        | Script                | O que faz                                                                                                                 |
+| ------------ | --------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| 1. Custos    | `rpa_custos.py`       | Robô (Playwright) entra no portal do fornecedor, lê a tabela de custos e atualiza o `custos.xlsx` com regras de segurança |
+| 2. Auditoria | `auditor_margem.py`   | Busca os anúncios na API, calcula a margem real e gera a lista de anúncios abaixo do mínimo                               |
+| 3. Preços    | `atualizar_precos.py` | Leva os anúncios em alerta ao preço sugerido, em modo automático ou assistido                                             |
+| Todas        | `ciclo_completo.py`   | Roda as três etapas em sequência com um comando                                                                           |
+
+---
+
+## Demonstração rápida (sem conta do Mercado Livre)
+
+Não precisa de credenciais, token nem `.env`.
+
+```bash
+git clone <url-do-repositorio>
+cd <pasta-do-projeto>
+
+pip install -r requirements.txt
+playwright install chromium
+
+python src/ciclo_completo.py --demo
+```
+
+O comando sobe o portal simulado, roda o ciclo inteiro e o encerra em cerca de 10 segundos. Use `--visivel` para ver o navegador do robô trabalhando.
+
+Resultado esperado no final:
+
+```
+SKU        Custo (R$)          Margem            Situação
+--------------------------------------------------------------
+DEMO-001   290,00 → 301,50     19,8% → 17,6%     OK → OK
+DEMO-002   235,00 → 236,00     4,1% → 3,8%       ALERTA → ALERTA
+DEMO-003   142,00 → 142,00     1,1% → 1,1%       ALERTA → ALERTA
+DEMO-004   100,00 → 88,50      -8,0% → 0,2%      ALERTA → ALERTA
+DEMO-005   165,00 → 165,00     11,9% → 11,9%     OK → OK
+DEMO-006   62,00 → 64,00       -5,6% → -8,4%     ALERTA → ALERTA
+
+⚠️  DEMO-003: custo do portal 205,90 (+45,0%) retido para conferência com o fornecedor.
+```
+
+O que a demonstração mostra:
+
+- O robô atualizou 4 custos, deixou 1 sem mudança e **reteve o DEMO-003**, cujo custo subiu 45% (acima do limite de 30%, pode ser erro do fornecedor).
+- A margem do DEMO-004 melhorou (custo caiu) e a do DEMO-006 piorou (custo subiu).
+- O ajuste de preços sugere um novo valor para os 4 anúncios em alerta, em **simulação** (nada é enviado).
+- Os arquivos originais do `demo/` **não são alterados**: o resultado vai para `demo/saida/`.
+
+---
+
+## Estrutura do projeto
+
+```
+├── README.md  requirements.txt  .env.example  .gitignore
+├── .env  tokens.json            ← seus segredos (fora do Git)
+│
+├── src/                         ← todo o código
+│   ├── ciclo_completo.py        ← ponto de entrada
+│   ├── auditor_margem.py
+│   ├── rpa_custos.py
+│   ├── atualizar_precos.py
+│   ├── coletar_anuncios.py      ← funções de coleta (usadas pelo auditor)
+│   ├── ml_auth.py               ← autenticação e renovação do token
+│   └── gerar_token.py  testar_api.py  testar_frete.py
+│
+├── dados/                       ← suas entradas reais (fora do Git)
+│   ├── custos.xlsx
+│   └── .playwright-session/     ← login salvo do robô
+│
+├── saida/                       ← tudo que o sistema gera (fora do Git)
+│   ├── alertas_revisao_precos.xlsx  relatorio_custos.xlsx  resultado_precos.xlsx
+│   └── logs/  screenshots/  backups/
+│
+└── demo/                        ← exemplo versionado
+    ├── portal_fornecedor/       ← portal simulado (Flask)
+    ├── anuncios_ml.csv  custos.xlsx
+    └── saida/                   ← o que a demonstração gera (fora do Git)
+```
+
+> Rode os comandos sempre **a partir da raiz** do projeto: o `tokens.json` e os caminhos relativos dependem disso.
+
+---
+
+## Uso real
+
+### 1. Instalação
+
+```bash
+pip install -r requirements.txt
+playwright install chromium
+```
+
+Crie o `.env` na raiz (use o `.env.example` como modelo):
 
 ```env
 ML_CLIENT_ID=seu_app_id
@@ -53,41 +142,30 @@ ML_REDIRECT_URI=https://www.google.com
 - Fluxos OAuth: **Authorization Code** e **Refresh Token** marcados
 - PKCE: desmarcado
 - Permissões: _Leitura_ em Publicação e sincronização, Faturamento e Venda e envios de um produto
+- Para o ajuste real de preços (opcional): _Leitura e escrita_ em Publicação e sincronização
 
----
+### 2. Primeira autenticação (uma vez só)
 
-## 3. Primeira autenticação (uma vez só)
-
-1. Acesse o link abaixo utilizando a conta do Mercado Livre autorizada para o aplicativo.
-2. Substitua `SEU_APP_ID` pelo `Client ID` da aplicação antes de acessar o link:
+1. Abra o link abaixo em uma aba anônima, logado na conta do vendedor (troque `SEU_APP_ID`):
 
    ```
    https://auth.mercadolivre.com.br/authorization?response_type=code&client_id=SEU_APP_ID&redirect_uri=https://www.google.com
    ```
 
-2. Clique em **Permitir**. Você será levado ao Google, e a URL terá o código:
-   `https://www.google.com/?code=TG-xxxxxxxx...`
-
+2. Clique em **Permitir**. Você será levado ao Google, e a URL terá o código: `https://www.google.com/?code=TG-xxxxxxxx...`
 3. Rode o script e cole a URL inteira (ou só o código `TG-...`):
 
    ```bash
-   python gerar_token.py
+   python src/gerar_token.py
    ```
 
-   O resultado esperado é `✅ Token gerado!` e `Tem refresh_token?: True`.
+   Esperado: `✅ Token gerado!` e `Tem refresh_token?: True`.
 
-4. Teste a conexão:
+4. Teste a conexão: `python src/testar_api.py`
 
-   ```bash
-   python testar_api.py
-   ```
+> O código `TG-` é de uso único e expira em poucos minutos. Depois disso o token é renovado automaticamente.
 
-> O código `TG-` é de uso único e expira em poucos minutos. Se der `invalid_grant`, gere outro.
-> Depois disso, o token é renovado automaticamente. Só repita esta etapa se o acesso for revogado ou o `tokens.json` for apagado.
-
----
-
-## 4. Preparar o `custos.xlsx`
+### 3. Planilha de custos: `dados/custos.xlsx`
 
 Duas colunas, na primeira aba, com cabeçalho na linha 1:
 
@@ -96,139 +174,143 @@ Duas colunas, na primeira aba, com cabeçalho na linha 1:
 | ABC-123 | 85,90               |
 | XYZ-456 | 210,00              |
 
-- O SKU deve ser **igual** ao cadastrado no anúncio do Mercado Livre (maiúsculas e minúsculas não importam).
-- O mesmo SKU pode aparecer várias vezes se o custo for igual (ex.: uma peça compatível com vários carros).
+- O SKU deve ser **igual** ao do anúncio no Mercado Livre (maiúsculas e minúsculas não importam).
+- O mesmo SKU pode se repetir (peça compatível com vários veículos), se o custo for igual.
 - Custo aceito como `85.9`, `85,90` ou `R$ 85,90`.
-- Sempre que mudar um custo, **salve o arquivo** e rode o auditor de novo.
 
----
-
-## 5. Rodar o auditor
-
-Feche o `alertas_revisao_precos.xlsx` (se estiver aberto) e execute:
+### 4. Rodar
 
 ```bash
-python auditor_margem.py
+python src/ciclo_completo.py --sem-custos --precos   # auditoria + ajuste de preços (simulação)
+python src/ciclo_completo.py                          # inclui o robô de custos (precisa de um portal)
+python src/auditor_margem.py                         # só a auditoria
 ```
 
-No final aparece um resumo:
-
-```
-Com margem calculada : 301
-Em alerta            : 12
-Sem custo/erro       : 0
-📄 Arquivo gerado: alertas_revisao_precos.xlsx
-```
-
-O arquivo `alertas_revisao_precos.xlsx` é **sobrescrito** a cada execução, e não precisa apagar o anterior.
-
-### O que tem no relatório
-
-| Aba                    | Conteúdo                                                                                  |
-| ---------------------- | ----------------------------------------------------------------------------------------- |
-| **Alertas**            | Anúncios abaixo da margem mínima, do pior para o melhor, com um preço sugerido aproximado |
-| **Sem custo ou erro**  | SKUs que não foram achados no `custos.xlsx` ou anúncios com erro na consulta              |
-| **Auditoria completa** | Todos os anúncios com comissão, frete, custo, lucro e margem                              |
+O robô de custos só faz sentido se o seu fornecedor tem um portal web. Se você mantém o `dados/custos.xlsx` manualmente, use `--sem-custos`.
 
 ---
 
-## 6. Testar sem conta do Mercado Livre (modo demo)
+## Módulos
 
-Para ver o auditor funcionando **sem `.env`, sem token e sem chamar a API**, use o modo demo:
+### Auditor de margem: `auditor_margem.py`
+
+Busca todos os anúncios ativos, consulta comissão (`/sites/MLB/listing_prices`) e frete do vendedor (`/users/{id}/shipping_options/free`), cruza com os custos e gera `saida/alertas_revisao_precos.xlsx`.
+
+| Aba                    | Conteúdo                                                                                                      |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------- |
+| **Alertas**            | Anúncios abaixo da margem mínima, do pior para o melhor, com `situacao`, `motivo` e um `preco_sugerido_aprox` |
+| **Sem custo ou erro**  | SKUs que não existem no `custos.xlsx` ou anúncios com erro na consulta                                        |
+| **Auditoria completa** | Todos os anúncios, com comissão, frete, custo, lucro e margem                                                 |
+
+A coluna `situacao` vale `ALERTA`, `OK`, `SEM CUSTO` ou `ERRO`, e `motivo` explica o alerta (por exemplo, `prejuízo e margem abaixo de 10%`).
+
+Configuração no topo do arquivo: `MARGEM_MIN_PCT` (padrão 10), `LUCRO_MIN_REAIS` (padrão 0) e `LIMITE_TESTE` (processa só N anúncios, útil no primeiro teste).
+
+### RPA de custos: `rpa_custos.py`
+
+Robô com Playwright: faz login, percorre a tabela paginada do portal, converte `R$ 1.234,56` em número e atualiza o `custos.xlsx`.
+
+| Situação                               | O que o robô faz                                      |
+| -------------------------------------- | ----------------------------------------------------- |
+| Custo igual ao atual                   | **SEM MUDANÇA**                                       |
+| Variação de até 30%                    | **ATUALIZADO** (gravado)                              |
+| Variação acima de 30%                  | **CONFERIR** (não grava: pode ser erro do fornecedor) |
+| Custo ilegível no portal               | **ERRO DE LEITURA** (registra e segue com os demais)  |
+| SKU do portal que não está na planilha | Listado como SKU novo, não é adicionado               |
+| SKU da planilha que não está no portal | Listado, não é alterado                               |
+
+Opções: `--demo`, `--simular` (compara sem gravar), `--limite 30`, `--visivel`, `--limpar-sessao`.
+
+Segurança e robustez:
+
+- **Backup** com data em `saida/backups/` antes de cada gravação real.
+- Só as **células de custo** mudam; formatação e outras abas ficam intactas.
+- **Login salvo** em `dados/.playwright-session/`; senha só no `.env` ou digitada no terminal, nunca no código nem no log.
+- **Log** em `saida/logs/` e **screenshot automático** em `saida/screenshots/` quando o navegador falha.
+- **Seletores centralizados** no dicionário `SELETORES`: se o portal mudar, o ajuste é em um lugar só.
+
+### Ajuste de preços: `atualizar_precos.py`
+
+Lê os alertas e leva cada anúncio ao `preco_sugerido_aprox`, via `PUT /items/{id}`.
+
+- **Modo automático:** aplica o preço sugerido em todos.
+- **Modo assistido:** um anúncio por vez; ENTER aceita o sugerido, ou você digita outro preço (`829.90` ou `829,90`), e confirma com `S` / `N` / `C` (cancelar).
+
+Proteções:
+
+- **Simulação por padrão:** nada é enviado ao Mercado Livre sem `--aplicar`.
+- `--aplicar` pede para digitar `CONFIRMAR` antes de qualquer alteração.
+- No automático, são ignorados os anúncios sem sugestão ou cujo sugerido não aumenta o preço, e **aumentos acima de 50%** ficam para conferência.
+- Cada alteração é **confirmada lendo o anúncio de volta** na API.
+- `--max N` limita a quantidade de anúncios (use `--max 1` no primeiro teste real).
+- Anúncios com variações podem ser recusados pela API: o erro é registrado e o script segue.
 
 ```bash
-python auditor_margem.py --demo
+python src/atualizar_precos.py                    # simulação
+python src/atualizar_precos.py --aplicar --max 1  # primeiro teste real, com 1 anúncio
 ```
 
-Ele lê o `anuncios_ml.csv` e o `custos.xlsx` da pasta (6 produtos **fictícios**) e gera o relatório `alertas_revisao_precos_demo.xlsx`. O relatório real (`alertas_revisao_precos.xlsx`) não é sobrescrito.
-
-Resultado esperado no terminal:
-
-```
-Modo demo: 6 anúncios lidos de anuncios_ml.csv (sem chamar a API).
-
---- Resumo ---
-Com margem calculada : 6
-Em alerta            : 4
-Sem custo/erro       : 0
-📄 Arquivo gerado: alertas_revisao_precos_demo.xlsx
-```
-
-Com a margem mínima padrão de 10%, o resultado esperado é:
-
-| SKU      | Preço (R$) | Lucro (R$) | Margem | Resultado                      |
-| -------- | ---------- | ---------- | ------ | ------------------------------ |
-| DEMO-001 | 520,00     | 103,10     | 19,8%  | OK                             |
-| DEMO-002 | 340,00     | 14,00      | 4,1%   | **ALERTA** (margem baixa)      |
-| DEMO-003 | 210,00     | 2,40       | 1,1%   | **ALERTA** (margem quase zero) |
-| DEMO-004 | 140,00     | −11,20     | −8,0%  | **ALERTA** (prejuízo)          |
-| DEMO-005 | 280,00     | 33,30      | 11,9%  | OK                             |
-| DEMO-006 | 70,00      | −3,90      | −5,6%  | **ALERTA** (prejuízo)          |
-
-O `custos.xlsx` de exemplo tem uma segunda aba, **Comentários**, com a conta de cada produto e a explicação de cada resultado.
-
-**Como o modo demo funciona:**
-
-- Precisa apenas de `pandas` e `openpyxl` (não usa `requests`, `.env` nem `tokens.json`).
-- O `anuncios_ml.csv` do demo tem as colunas `item_id`, `titulo`, `sku`, `preco`, `categoria`, `tipo_anuncio`, `comissao`, `frete_gratis`, `logistica`, `modo_envio` e **`frete`**. No modo real o frete vem da API; no demo ele vem dessa coluna.
-- Para usar outros arquivos: `python auditor_margem.py --demo --csv caminho/anuncios.csv --custos caminho/custos.xlsx`
-
-> ⚠️ O `coletar_anuncios.py` grava a coleta real em `anuncios_ml.csv`, o mesmo nome do arquivo de exemplo. Se rodá-lo, você sobrescreve o demo (e o CSV real não tem a coluna `frete`). Mantenha o exemplo em outra pasta ou mude o nome de saída da coleta.
+> ⚠️ A alteração real de preços foi testada apenas com a API simulada em testes automatizados. Valide com `--aplicar --max 1` antes de usar em escala.
 
 ---
 
-## 7. Ajustar a margem mínima
+## Segurança
 
-No topo do `auditor_margem.py`:
-
-```python
-ARQUIVO_CUSTOS = "custos.xlsx"
-COL_SKU = "SKU"
-COL_CUSTO = "Custo do Fornecedor"
-MARGEM_MIN_PCT = 10.0    # alerta se a margem (%) ficar abaixo disso
-LUCRO_MIN_REAIS = 0.0    # alerta se o lucro (R$) ficar abaixo disso
-ARQUIVO_SAIDA = "alertas_revisao_precos.xlsx"
-LIMITE_TESTE = None      # modo real: use um número (ex.: 20) para testar com poucos anúncios
-```
-
----
-
-## 8. Problemas comuns
-
-| Mensagem / sintoma                                       | O que fazer                                                                               |
-| -------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `invalid_grant` ao gerar o token                         | Código expirado ou já usado, ou `redirect_uri` diferente do cadastrado. Gere outro código |
-| `403 PA_UNAUTHORIZED_RESULT_FROM_POLICIES`               | Falta a permissão de envios no app. Libere _Leitura_, salve e reautorize (passo 3)        |
-| `Tem refresh_token?: False`                              | Marque **Refresh Token** no app e refaça o passo 3                                        |
-| `PermissionError` ao gerar o relatório                   | Feche o `alertas_revisao_precos.xlsx` (ou o `_demo.xlsx`) no Excel                        |
-| `Pandas requires version '3.1.5' or newer of 'openpyxl'` | `pip install --upgrade openpyxl`                                                          |
-| `Coluna 'SKU' não encontrada`                            | Ajuste `COL_SKU` e `COL_CUSTO` no topo do script para os nomes da sua planilha            |
-| `O CSV ... não tem a(s) coluna(s): ['frete']` (demo)     | O `anuncios_ml.csv` foi sobrescrito pela coleta real. Restaure o arquivo de exemplo       |
-| Muitos itens em "Sem custo ou erro"                      | O SKU do Excel está diferente do anúncio (hífen, espaço, zero à esquerda)                 |
-| `--demo` começou a varrer a API                          | Está rodando o `auditor_margem.py` antigo. Atualize o arquivo para a versão com `--demo`  |
-
----
-
-## 9. Segurança
-
-- **Nunca compartilhe** o `.env` nem o `tokens.json`. Quem tiver esses arquivos acessa a conta.
-- Se usar Git, adicione ao `.gitignore`:
+- **Nunca compartilhe** o `.env`, o `tokens.json` nem a pasta `dados/`.
+- Nenhuma credencial fica no código ou nos logs.
+- O `.gitignore` deixa de fora os segredos, os dados reais e tudo o que o sistema gera:
 
   ```
+  __pycache__/
+  *.pyc
   .env
   tokens.json
-  *.xlsx
-  !custos.xlsx
+  dados/
+  saida/
+  demo/saida/
+  /*.xlsx
+  /*.csv
   ```
 
-  A linha `!custos.xlsx` mantém no repositório o `custos.xlsx` **de exemplo (fictício)**. Se você trocar esse arquivo pelos custos reais da empresa, remova essa exceção antes de fazer commit.
-
-- O app tem somente permissão de **leitura**: o script não altera preços nem anúncios.
+- A permissão de escrita no app só é necessária para `--aplicar`. A auditoria funciona somente com leitura.
 
 ---
 
-## 10. Limitações
+## Limitações
 
-- O preço considerado é o de tabela do anúncio. Promoções ativas não entram no cálculo.
-- O frete é a cotação da API (`list_cost`). Confira de vez em quando com o custo real de uma venda recente.
-- O preço sugerido é uma estimativa, pois o frete varia conforme o preço.
+- O preço considerado é o de tabela do anúncio; promoções ativas não entram no cálculo.
+- O frete é a cotação da API (`list_cost`); confira de vez em quando com o custo real de uma venda recente.
+- O `preco_sugerido_aprox` é uma estimativa: ele mantém a taxa de comissão e o frete atuais, e o frete varia conforme o preço.
+- O portal do fornecedor é simulado: para um portal real, os seletores em `SELETORES` precisam ser ajustados.
+
+---
+
+## Problemas comuns
+
+| Mensagem / sintoma                                       | O que fazer                                                                                                                                              |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `invalid_grant` ao gerar o token                         | Código expirado ou já usado, ou `redirect_uri` diferente do cadastrado. Gere outro código                                                                |
+| `403 PA_UNAUTHORIZED_RESULT_FROM_POLICIES`               | Falta permissão no app. Libere _Leitura_ em "Venda e envios de um produto", salve e reautorize                                                           |
+| `Tem refresh_token?: False`                              | Marque **Refresh Token** no app e refaça a autenticação                                                                                                  |
+| `tokens.json` ou arquivos não encontrados                | Rode os comandos a partir da raiz do projeto                                                                                                             |
+| `Não consegui iniciar o portal simulado`                 | Veja o erro mostrado no terminal e o log em `saida/logs/portal_demo.log`; verifique Flask instalado e porta 5000 livre (`netstat -ano \| findstr :5000`) |
+| `Executable doesn't exist` (Playwright)                  | Rode `playwright install chromium`                                                                                                                       |
+| `PermissionError` ao gerar relatórios                    | Feche o arquivo `.xlsx` no Excel                                                                                                                         |
+| `Pandas requires version '3.1.5' or newer of 'openpyxl'` | `pip install --upgrade openpyxl`                                                                                                                         |
+| `Coluna 'SKU' não encontrada`                            | Ajuste `COL_SKU` e `COL_CUSTO` no topo dos scripts para os nomes da sua planilha                                                                         |
+| Muitos itens em "Sem custo ou erro"                      | O SKU do Excel está diferente do anúncio (hífen, espaço, zero à esquerda)                                                                                |
+| `sem permissão de escrita` no ajuste de preços           | Habilite _Leitura e escrita_ em "Publicação e sincronização" e reautorize                                                                                |
+
+---
+
+## Decisões de projeto
+
+- **API onde existe, RPA onde não existe.** Anúncios, comissão, frete e preço têm API oficial, que é mais estável do que automatizar a interface. O RPA ficou com o único ponto sem API: o portal do fornecedor.
+- **Seguro por padrão.** O robô segura variações suspeitas, faz backup antes de gravar e o ajuste de preços só simula até receber `--aplicar` e a palavra `CONFIRMAR`.
+- **Uma falha não derruba a execução.** Um produto ilegível ou um anúncio recusado vira registro no relatório e no log, e os demais seguem.
+- **Etapas independentes.** Cada script funciona sozinho; o `ciclo_completo.py` só coordena a ordem.
+- **Demonstrável por qualquer pessoa.** O modo `--demo` roda o ciclo inteiro sem conta, sem credenciais e sem alterar os arquivos de exemplo.
+
+## Tecnologias
+
+Python 3.12 · Playwright · pandas · openpyxl · requests · Flask (portal simulado) · API do Mercado Livre (OAuth 2.0)

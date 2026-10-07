@@ -1,0 +1,30 @@
+{% extends "base.html" %} {% block titulo %}Entrar - Portal do Fornecedor
+(simulado){% endblock %} {% block conteudo %}
+<h2>Entrar</h2>
+{% if erro %}
+<div class="erro" data-testid="erro-login">{{ erro }}</div>
+{% endif %}
+<form method="post" data-testid="form-login">
+  <label for="usuario">Usuário</label>
+  <input
+    id="usuario"
+    name="usuario"
+    data-testid="campo-usuario"
+    autocomplete="username"
+  />
+  <label for="senha">Senha</label>
+  <input
+    id="senha"
+    name="senha"
+    type="password"
+    data-testid="campo-senha"
+    autocomplete="current-password"
+  />
+  <p>
+    <button class="btn" type="submit" data-testid="botao-entrar">Entrar</button>
+  </p>
+</form>
+<p style="font-size: 13px; color: #666">
+  Demo: usuário <code>demo</code> / senha <code>demo123</code> (fictícios).
+</p>
+{% endblock %}
